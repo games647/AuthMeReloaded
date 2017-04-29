@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import fr.xephi.authme.datasource.Columns;
 import fr.xephi.authme.initialization.HasCleanup;
-import fr.xephi.authme.listener.PlayerListener;
 import fr.xephi.authme.process.register.executors.RegistrationMethod;
 import fr.xephi.authme.security.crypts.Whirlpool;
 import fr.xephi.authme.util.expiring.ExpiringMap;
@@ -56,7 +55,7 @@ public class ClassesConsistencyTest {
     /** Classes excluded from the field visibility test. */
     private static final Set<Class<?>> CLASSES_EXCLUDED_FROM_VISIBILITY_TEST = ImmutableSet.of(
         Whirlpool.class, // not our implementation, so we don't touch it
-        Columns.class // uses non-final String constants, which is safe
+        Columns.class // uses non-static String constants, which is safe
     );
 
     /**

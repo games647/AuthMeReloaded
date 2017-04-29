@@ -94,14 +94,24 @@ public class SQLite implements DataSource {
                 st.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN " + col.SALT + " VARCHAR(255);");
             }
 
-            if (isColumnMissing(md, col.IP)) {
+            if (isColumnMissing(md, col.LAST_IP)) {
                 st.executeUpdate("ALTER TABLE " + tableName
-                    + " ADD COLUMN " + col.IP + " VARCHAR(40) NOT NULL DEFAULT '';");
+                    + " ADD COLUMN " + col.LAST_IP + " VARCHAR(40) NOT NULL DEFAULT '';");
             }
 
             if (isColumnMissing(md, col.LAST_LOGIN)) {
                 st.executeUpdate("ALTER TABLE " + tableName
                     + " ADD COLUMN " + col.LAST_LOGIN + " TIMESTAMP;");
+            }
+
+            if (isColumnMissing(md, col.REGISTRATION_IP)) {
+                st.executeUpdate("ALTER TABLE " + tableName
+                    + " ADD COLUMN " + col.REGISTRATION_IP + " VARCHAR(40);");
+            }
+
+            if (isColumnMissing(md, col.REGISTRATION_DATE)) {
+                st.executeUpdate("ALTER TABLE " + tableName
+                    + " ADD COLUMN " + col.REGISTRATION_DATE + " TIMESTAMP;");
             }
 
             if (isColumnMissing(md, col.LASTLOC_X)) {
@@ -119,13 +129,13 @@ public class SQLite implements DataSource {
             }
 
             if (isColumnMissing(md, col.LASTLOC_YAW)) {
-                st.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN "
-                    + col.LASTLOC_YAW + " FLOAT;");
+                st.executeUpdate("ALTER TABLE " + tableName
+                    + " ADD COLUMN " + col.LASTLOC_YAW + " FLOAT;");
             }
 
             if (isColumnMissing(md, col.LASTLOC_PITCH)) {
-                st.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN "
-                    + col.LASTLOC_PITCH + " FLOAT;");
+                st.executeUpdate("ALTER TABLE " + tableName
+                    + " ADD COLUMN " + col.LASTLOC_PITCH + " FLOAT;");
             }
 
             if (isColumnMissing(md, col.EMAIL)) {
@@ -134,10 +144,11 @@ public class SQLite implements DataSource {
             }
 
             if (isColumnMissing(md, col.IS_LOGGED)) {
-                st.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN " + col.IS_LOGGED + " INT DEFAULT '0';");
+                st.executeUpdate("ALTER TABLE " + tableName
+                    + " ADD COLUMN " + col.IS_LOGGED + " INT DEFAULT '0';");
             }
         }
-        ConsoleLogger.info("SQLite Setup finished");
+        ConsoleLogger.info("SQLite setup finished");
     }
 
     private boolean isColumnMissing(DatabaseMetaData metaData, String columnName) throws SQLException {
@@ -225,27 +236,35 @@ public class SQLite implements DataSource {
                     ConsoleLogger.warning("Warning! Detected hashed password with separate salt but the salt column "
                         + "is not set in the config!");
                 }
-                pst = con.prepareStatement("INSERT INTO " + tableName + "(" + col.NAME + "," + col.PASSWORD +
-                    "," + col.IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME + "," + col.EMAIL +
-                    ") VALUES (?,?,?,?,?,?);");
+                // TODO #792: Last login and last IP should be NULL here
+
+                pst = con.prepareStatement("INSERT INTO " + tableName + "(" + col.NAME + "," + col.PASSWORD
+                    + "," + col.LAST_IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME + "," + col.EMAIL
+                    + "," + col.REGISTRATION_DATE + "," + col.REGISTRATION_IP
+                    + ") VALUES (?,?,?,?,?,?,?,?);");
                 pst.setString(1, auth.getNickname());
                 pst.setString(2, password.getHash());
-                pst.setString(3, auth.getIp());
+                pst.setString(3, auth.getLastIp());
                 pst.setLong(4, auth.getLastLogin());
                 pst.setString(5, auth.getRealName());
                 pst.setString(6, auth.getEmail());
+                pst.setLong(7, System.currentTimeMillis());
+                pst.setString(8, auth.getRegistrationIp());
                 pst.executeUpdate();
             } else {
-                pst = con.prepareStatement("INSERT INTO " + tableName + "(" + col.NAME + "," + col.PASSWORD + ","
-                    + col.IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME + "," + col.EMAIL + "," + col.SALT
-                    + ") VALUES (?,?,?,?,?,?,?);");
+                pst = con.prepareStatement("INSERT INTO " + tableName + "(" + col.NAME + "," + col.PASSWORD
+                    + "," + col.LAST_IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME + "," + col.EMAIL
+                    + "," + col.REGISTRATION_DATE + "," + col.REGISTRATION_IP + "," + col.SALT
+                    + ") VALUES (?,?,?,?,?,?,?,?,?);");
                 pst.setString(1, auth.getNickname());
                 pst.setString(2, password.getHash());
-                pst.setString(3, auth.getIp());
+                pst.setString(3, auth.getLastIp());
                 pst.setLong(4, auth.getLastLogin());
                 pst.setString(5, auth.getRealName());
                 pst.setString(6, auth.getEmail());
-                pst.setString(7, password.getSalt());
+                pst.setLong(7, System.currentTimeMillis());
+                pst.setString(8, auth.getRegistrationIp());
+                pst.setString(9, password.getSalt());
                 pst.executeUpdate();
             }
         } catch (SQLException ex) {
@@ -292,8 +311,9 @@ public class SQLite implements DataSource {
     public boolean updateSession(PlayerAuth auth) {
         PreparedStatement pst = null;
         try {
-            pst = con.prepareStatement("UPDATE " + tableName + " SET " + col.IP + "=?, " + col.LAST_LOGIN + "=?, " + col.REAL_NAME + "=? WHERE " + col.NAME + "=?;");
-            pst.setString(1, auth.getIp());
+            pst = con.prepareStatement("UPDATE " + tableName + " SET " + col.LAST_IP + "=?, "
+                + col.LAST_LOGIN + "=?, " + col.REAL_NAME + "=? WHERE " + col.NAME + "=?;");
+            pst.setString(1, auth.getLastIp());
             pst.setLong(2, auth.getLastLogin());
             pst.setString(3, auth.getRealName());
             pst.setString(4, auth.getNickname());
@@ -414,7 +434,7 @@ public class SQLite implements DataSource {
         ResultSet rs = null;
         List<String> countIp = new ArrayList<>();
         try {
-            pst = con.prepareStatement("SELECT " + col.NAME + " FROM " + tableName + " WHERE " + col.IP + "=?;");
+            pst = con.prepareStatement("SELECT " + col.NAME + " FROM " + tableName + " WHERE " + col.LAST_IP + "=?;");
             pst.setString(1, ip);
             rs = pst.executeQuery();
             while (rs.next()) {
@@ -598,6 +618,8 @@ public class SQLite implements DataSource {
             .realName(row.getString(col.REAL_NAME))
             .password(row.getString(col.PASSWORD), salt)
             .lastLogin(row.getLong(col.LAST_LOGIN))
+            .registrationDate(row.getLong(col.REGISTRATION_DATE))
+            .registrationIp(row.getString(col.REGISTRATION_IP))
             .locX(row.getDouble(col.LASTLOC_X))
             .locY(row.getDouble(col.LASTLOC_Y))
             .locZ(row.getDouble(col.LASTLOC_Z))
@@ -605,9 +627,9 @@ public class SQLite implements DataSource {
             .locYaw(row.getFloat(col.LASTLOC_YAW))
             .locPitch(row.getFloat(col.LASTLOC_PITCH));
 
-        String ip = row.getString(col.IP);
+        String ip = row.getString(col.LAST_IP);
         if (!ip.isEmpty()) {
-            authBuilder.ip(ip);
+            authBuilder.lastIp(ip);
         }
         return authBuilder.build();
     }
