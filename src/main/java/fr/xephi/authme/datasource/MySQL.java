@@ -349,7 +349,7 @@ public class MySQL implements DataSource {
                 + col.NAME + "," + col.PASSWORD + "," + col.LAST_IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME
                 + "," + col.EMAIL + "," + col.REGISTRATION_DATE + "," + col.REGISTRATION_IP
                 + (useSalt ? "," + col.SALT : "")
-                + ") VALUES (?,?,?,?,?,?" + (useSalt ? ",?" : "") + ");";
+                + ") VALUES (?,?,?,?,?,?,?,?" + (useSalt ? ",?" : "") + ");";
             try (PreparedStatement pst = con.prepareStatement(sql)) {
                 pst.setString(1, auth.getNickname());
                 pst.setString(2, auth.getPassword().getHash());
@@ -357,8 +357,10 @@ public class MySQL implements DataSource {
                 pst.setLong(4, auth.getLastLogin());
                 pst.setString(5, auth.getRealName());
                 pst.setString(6, auth.getEmail());
+                pst.setLong(7, System.currentTimeMillis());
+                pst.setString(8, auth.getRegistrationIp());
                 if (useSalt) {
-                    pst.setString(7, auth.getPassword().getSalt());
+                    pst.setString(9, auth.getPassword().getSalt());
                 }
                 pst.executeUpdate();
             }
