@@ -1,16 +1,16 @@
-package fr.xephi.authme.permission;
+package fr.xephi.authme.data.limbo;
 
 import fr.xephi.authme.ConsoleLogger;
-import fr.xephi.authme.data.limbo.LimboPlayer;
-import fr.xephi.authme.data.limbo.LimboService;
 import fr.xephi.authme.initialization.Reloadable;
+import fr.xephi.authme.permission.PermissionsManager;
 import fr.xephi.authme.settings.Settings;
 import fr.xephi.authme.settings.properties.PluginSettings;
 import org.bukkit.entity.Player;
 
 import javax.annotation.PostConstruct;
 import javax.inject.Inject;
-import java.util.Optional;
+import java.util.Collection;
+import java.util.Collections;
 
 /**
  * Changes the permission group according to the auth status of the player and the configuration.
@@ -24,16 +24,13 @@ import java.util.Optional;
  * exist for the replacement to take place. Furthermore, since some permission groups require that players
  * be in at least one group, this will mean that the player is not removed from his primary group.
  */
-public class AuthGroupHandler implements Reloadable {
+class AuthGroupHandler implements Reloadable {
 
     @Inject
     private PermissionsManager permissionsManager;
 
     @Inject
     private Settings settings;
-
-    @Inject
-    private LimboService limboService;
 
     private String unregisteredGroup;
     private String registeredGroup;
@@ -45,34 +42,36 @@ public class AuthGroupHandler implements Reloadable {
      * Sets the group of a player by its authentication status.
      *
      * @param player the player
+     * @param limbo the associated limbo player (nullable)
      * @param groupType the group type
      */
-    public void setGroup(Player player, AuthGroupType groupType) {
+    void setGroup(Player player, LimboPlayer limbo, AuthGroupType groupType) {
         if (!useAuthGroups()) {
             return;
         }
 
-        String primaryGroup = Optional
-            .ofNullable(limboService.getLimboPlayer(player.getName()))
-            .map(LimboPlayer::getGroup)
-            .orElse("");
+        Collection<String> previousGroups = limbo == null ? Collections.emptyList() : limbo.getGroups();
 
         switch (groupType) {
             // Implementation note: some permission systems don't support players not being in any group,
             // so add the new group before removing the old ones
             case UNREGISTERED:
                 permissionsManager.addGroup(player, unregisteredGroup);
-                permissionsManager.removeGroups(player, registeredGroup, primaryGroup);
+                permissionsManager.removeGroup(player, registeredGroup);
+                permissionsManager.removeGroups(player, previousGroups);
                 break;
 
             case REGISTERED_UNAUTHENTICATED:
                 permissionsManager.addGroup(player, registeredGroup);
-                permissionsManager.removeGroups(player, unregisteredGroup, primaryGroup);
+                permissionsManager.removeGroup(player, unregisteredGroup);
+                permissionsManager.removeGroups(player, previousGroups);
+
                 break;
 
             case LOGGED_IN:
-                permissionsManager.addGroup(player, primaryGroup);
-                permissionsManager.removeGroups(player, unregisteredGroup, registeredGroup);
+                permissionsManager.addGroups(player, previousGroups);
+                permissionsManager.removeGroup(player, unregisteredGroup);
+                permissionsManager.removeGroup(player, registeredGroup);
                 break;
 
             default:

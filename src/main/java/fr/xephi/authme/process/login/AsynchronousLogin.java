@@ -9,6 +9,7 @@ import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.data.limbo.LimboService;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.events.AuthMeAsyncPreLoginEvent;
+import fr.xephi.authme.events.FailedLoginEvent;
 import fr.xephi.authme.mail.EmailService;
 import fr.xephi.authme.message.MessageKey;
 import fr.xephi.authme.permission.AdminPermission;
@@ -180,6 +181,8 @@ public class AsynchronousLogin implements AsynchronousProcess {
      */
     private void handleWrongPassword(Player player, String ip) {
         ConsoleLogger.fine(player.getName() + " used the wrong password");
+
+        bukkitService.createAndCallEvent(isAsync -> new FailedLoginEvent(player, isAsync));
         if (tempbanManager.shouldTempban(ip)) {
             tempbanManager.tempbanPlayer(player);
         } else if (service.getProperty(RestrictionSettings.KICK_ON_WRONG_PASSWORD)) {
@@ -266,6 +269,12 @@ public class AsynchronousLogin implements AsynchronousProcess {
         );
     }
 
+    /**
+     * Sends info about the other accounts owned by the given player to the configured users.
+     *
+     * @param auths the names of the accounts also owned by the player
+     * @param player the player
+     */
     private void displayOtherAccounts(List<String> auths, Player player) {
         if (!service.getProperty(RestrictionSettings.DISPLAY_OTHER_ACCOUNTS) || auths.size() <= 1) {
             return;

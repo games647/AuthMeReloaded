@@ -1,11 +1,12 @@
 package fr.xephi.authme.command.executable.authme;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSortedMap;
 import fr.xephi.authme.ConsoleLogger;
 import fr.xephi.authme.command.ExecutableCommand;
 import fr.xephi.authme.datasource.converter.Converter;
 import fr.xephi.authme.datasource.converter.CrazyLoginConverter;
+import fr.xephi.authme.datasource.converter.LoginSecurityConverter;
 import fr.xephi.authme.datasource.converter.MySqlToSqlite;
 import fr.xephi.authme.datasource.converter.RakamakConverter;
 import fr.xephi.authme.datasource.converter.RoyalAuthConverter;
@@ -40,14 +41,10 @@ public class ConverterCommand implements ExecutableCommand {
     private Factory<Converter> converterFactory;
 
     @Override
-    public void executeCommand(final CommandSender sender, List<String> arguments) {
-        // Get the conversion job
-        String job = arguments.get(0);
-
-        // Determine the job type
-        Class<? extends Converter> converterClass = CONVERTERS.get(job.toLowerCase());
+    public void executeCommand(CommandSender sender, List<String> arguments) {
+        Class<? extends Converter> converterClass = getConverterClassFromArgs(arguments);
         if (converterClass == null) {
-            sender.sendMessage("[AuthMe] Converter does not exist!");
+            sender.sendMessage("Converters: " + String.join(", ", CONVERTERS.keySet()));
             return;
         }
 
@@ -68,7 +65,13 @@ public class ConverterCommand implements ExecutableCommand {
         });
 
         // Show a status message
-        sender.sendMessage("[AuthMe] Successfully started " + job);
+        sender.sendMessage("[AuthMe] Successfully started " + arguments.get(0));
+    }
+
+    private static Class<? extends Converter> getConverterClassFromArgs(List<String> arguments) {
+        return arguments.isEmpty()
+            ? null
+            : CONVERTERS.get(arguments.get(0).toLowerCase());
     }
 
     /**
@@ -77,7 +80,7 @@ public class ConverterCommand implements ExecutableCommand {
      * @return map with all available converters
      */
     private static Map<String, Class<? extends Converter>> getConverters() {
-        return ImmutableMap.<String, Class<? extends Converter>>builder()
+        return ImmutableSortedMap.<String, Class<? extends Converter>>naturalOrder()
             .put("xauth", XAuthConverter.class)
             .put("crazylogin", CrazyLoginConverter.class)
             .put("rakamak", RakamakConverter.class)
@@ -85,7 +88,7 @@ public class ConverterCommand implements ExecutableCommand {
             .put("vauth", VAuthConverter.class)
             .put("sqlitetosql", SqliteToSql.class)
             .put("mysqltosqlite", MySqlToSqlite.class)
+            .put("loginsecurity", LoginSecurityConverter.class)
             .build();
     }
-
 }

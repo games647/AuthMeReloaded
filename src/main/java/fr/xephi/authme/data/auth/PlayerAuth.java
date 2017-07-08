@@ -3,7 +3,7 @@ package fr.xephi.authme.data.auth;
 import fr.xephi.authme.security.crypts.HashedPassword;
 import org.bukkit.Location;
 
-import static com.google.common.base.Objects.firstNonNull;
+import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 
@@ -197,6 +197,11 @@ public class PlayerAuth {
         private float yaw;
         private float pitch;
 
+        /**
+         * Creates a PlayerAuth object.
+         *
+         * @return the generated PlayerAuth
+         */
         public PlayerAuth build() {
             PlayerAuth auth = new PlayerAuth();
             auth.nickname = checkNotNull(name).toLowerCase();
@@ -242,6 +247,12 @@ public class PlayerAuth {
             return this;
         }
 
+        /**
+         * Sets the location info based on the argument.
+         *
+         * @param location the location info to set
+         * @return this builder instance
+         */
         public Builder location(Location location) {
             this.x = location.getX();
             this.y = location.getY();

@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE! Do not edit this directly -->
-<!-- File auto-generated on Sun Apr 23 19:30:08 CEST 2017. See docs/config/config.tpl.md -->
+<!-- File auto-generated on Thu Jul 06 18:45:51 CEST 2017. See docs/config/config.tpl.md -->
 
 ## AuthMe Configuration
 The first time you run AuthMe it will create a config.yml file in the plugins/AuthMe folder, 
@@ -52,6 +52,10 @@ DataSource:
     mySQLlastlocZ: 'z'
     # Column for storing player LastLocation - World Name
     mySQLlastlocWorld: 'world'
+    # Column for storing player LastLocation - Yaw
+    mySQLlastlocYaw: 'yaw'
+    # Column for storing player LastLocation - Pitch
+    mySQLlastlocPitch: 'pitch'
     # Overrides the size of the DB Connection Pool, -1 = Auto
     poolSize: -1
 ExternalBoardOptions:
@@ -75,6 +79,8 @@ ExternalBoardOptions:
     IPBTablePrefix: 'ipb_'
     # IP Board default group ID; 3 is the default registered group defined by IP Board
     IPBActivatedGroupId: 3
+    # Xenforo table prefix defined during the Xenforo installation process
+    XFTablePrefix: 'xf_'
     # XenForo default group ID; 2 is the default registered group defined by Xenforo
     XFActivatedGroupId: 2
     # Wordpress prefix defined during WordPress installation
@@ -147,9 +153,11 @@ settings:
         AllowRestrictedUser: false
         # The restricted user feature will kick players listed below
         # if they don't match the defined IP address. Names are case-insensitive.
+        # Ip addresses support regex expressions (regex:127\.0\.0\..*)
         # Example:
         #     AllowedRestrictedUser:
         #     - playername;127.0.0.1
+        #     - playername;regex:127\.0\.0\..*
         AllowedRestrictedUser: []
         # Ban unknown IPs trying to log in with a restricted username?
         banUnsafedIP: false
@@ -215,14 +223,14 @@ settings:
         # PBKDF2DJANGO, WORDPRESS, ROYALAUTH, CUSTOM (for developers only). See full list at
         # https://github.com/AuthMe/AuthMeReloaded/blob/master/docs/hash_algorithms.md
         passwordHash: 'SHA256'
-        # Salt length for the SALTED2MD5 MD5(MD5(password)+salt)
-        doubleMD5SaltLength: 8
         # If a password check fails, AuthMe will also try to check with the following hash methods.
         # Use this setting when you change from one hash method to another.
         # AuthMe will update the password to the new hash. Example:
         # legacyHashes:
         # - 'SHA1'
         legacyHashes: []
+        # Salt length for the SALTED2MD5 MD5(MD5(password)+salt)
+        doubleMD5SaltLength: 8
         # Number of rounds to use if passwordHash is set to PBKDF2. Default is 10000
         pbkdf2Rounds: 10000
         # Prevent unsafe passwords from being used; put them in lowercase!
@@ -390,7 +398,7 @@ Purge:
     removePlayerDat: false
     # Do we need to remove the Essentials/userdata/player.yml file during purge process?
     removeEssentialsFile: false
-    # World where are players.dat stores
+    # World in which the players.dat are stored
     defaultWorld: 'world'
     # Remove LimitedCreative/inventories/player.yml, player_creative.yml files during purge?
     removeLimitedCreativesInventories: false
@@ -476,7 +484,7 @@ limbo:
     # DEFAULT: always set to default speed;
     # MAX_RESTORE: take the maximum of the player's current speed and the previous one
     # RESTORE_NO_ZERO: Like 'restore' but sets speed to default if the player's speed was 0
-    restoreFlySpeed: 'MAX_RESTORE'
+    restoreFlySpeed: 'RESTORE_NO_ZERO'
     # Restore walk speed: RESTORE, DEFAULT, MAX_RESTORE, RESTORE_NO_ZERO.
     # See above for a description of the values.
     restoreWalkSpeed: 'MAX_RESTORE'
@@ -489,6 +497,7 @@ BackupSystem:
     OnServerStop: true
     # Windows only: MySQL installation path
     MysqlWindowsPath: 'C:\Program Files\MySQL\MySQL Server 5.1\'
+# Converter settings: see https://github.com/AuthMe/AuthMeReloaded/wiki/Converters
 Converter:
     Rakamak:
         # Rakamak file name
@@ -500,6 +509,18 @@ Converter:
     CrazyLogin:
         # CrazyLogin database file name
         fileName: 'accounts.db'
+    loginSecurity:
+        # LoginSecurity: convert from SQLite; if false we use MySQL
+        useSqlite: true
+        mySql:
+            # LoginSecurity MySQL: database host
+            host: ''
+            # LoginSecurity MySQL: database name
+            database: ''
+            # LoginSecurity MySQL: database user
+            user: ''
+            # LoginSecurity MySQL: password for database user
+            password: ''
 ```
 
 To change settings on a running server, save your changes to config.yml and use 
@@ -507,4 +528,4 @@ To change settings on a running server, save your changes to config.yml and use
 
 ---
 
-This page was automatically generated on the [AuthMe/AuthMeReloaded repository](https://github.com/AuthMe/AuthMeReloaded/tree/master/docs/) on Sun Apr 23 19:30:08 CEST 2017
+This page was automatically generated on the [AuthMe/AuthMeReloaded repository](https://github.com/AuthMe/AuthMeReloaded/tree/master/docs/) on Thu Jul 06 18:45:51 CEST 2017

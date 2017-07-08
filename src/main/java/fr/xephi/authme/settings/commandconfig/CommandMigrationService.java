@@ -4,6 +4,7 @@ import ch.jalu.configme.migration.MigrationService;
 import ch.jalu.configme.properties.Property;
 import ch.jalu.configme.resource.PropertyResource;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import fr.xephi.authme.ConsoleLogger;
 import fr.xephi.authme.settings.SettingsMigrationService;
 import fr.xephi.authme.util.RandomStringUtils;
@@ -19,6 +20,11 @@ import java.util.stream.Collectors;
  */
 class CommandMigrationService implements MigrationService {
 
+    /** List of all properties in {@link CommandConfig}. */
+    @VisibleForTesting
+    static final List<String> COMMAND_CONFIG_PROPERTIES = ImmutableList.of(
+        "onJoin", "onLogin", "onSessionLogin", "onRegister", "onUnregister", "onLogout");
+
     @Inject
     private SettingsMigrationService settingsMigrationService;
 
@@ -30,11 +36,15 @@ class CommandMigrationService implements MigrationService {
         final CommandConfig commandConfig = CommandSettingsHolder.COMMANDS.getValue(resource);
         final boolean didMoveCommands = transformOldCommands(commandConfig);
 
-        if (didMoveCommands) { // TODO ConfigMe/#29: Check that loaded file isn't completely empty
+        if (didMoveCommands || isFileEmpty(resource)) {
             resource.setValue("", commandConfig);
             return true;
         }
         return false;
+    }
+
+    private boolean isFileEmpty(PropertyResource resource) {
+        return COMMAND_CONFIG_PROPERTIES.stream().anyMatch(property -> resource.getObject(property) == null);
     }
 
     /**

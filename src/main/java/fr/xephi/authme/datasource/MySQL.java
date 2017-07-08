@@ -48,10 +48,11 @@ public class MySQL implements DataSource {
 
     private String phpBbPrefix;
     private String ipbPrefix;
+    private String xfPrefix;
+    private String wordpressPrefix;
     private int phpBbGroup;
     private int ipbGroup;
     private int xfGroup;
-    private String wordpressPrefix;
 
     public MySQL(Settings settings) throws ClassNotFoundException, SQLException {
         setParameters(settings);
@@ -89,6 +90,11 @@ public class MySQL implements DataSource {
         setParameters(settings);
     }
 
+    /**
+     * Retrieves various settings.
+     *
+     * @param settings the settings to read properties from
+     */
     private void setParameters(Settings settings) {
         this.host = settings.getProperty(DatabaseSettings.MYSQL_HOST);
         this.port = settings.getProperty(DatabaseSettings.MYSQL_PORT);
@@ -103,15 +109,19 @@ public class MySQL implements DataSource {
         this.phpBbGroup = settings.getProperty(HooksSettings.PHPBB_ACTIVATED_GROUP_ID);
         this.ipbPrefix = settings.getProperty(HooksSettings.IPB_TABLE_PREFIX);
         this.ipbGroup = settings.getProperty(HooksSettings.IPB_ACTIVATED_GROUP_ID);
+        this.xfPrefix = settings.getProperty(HooksSettings.XF_TABLE_PREFIX);
         this.xfGroup = settings.getProperty(HooksSettings.XF_ACTIVATED_GROUP_ID);
         this.wordpressPrefix = settings.getProperty(HooksSettings.WORDPRESS_TABLE_PREFIX);
         this.poolSize = settings.getProperty(DatabaseSettings.MYSQL_POOL_SIZE);
         if (poolSize == -1) {
-            poolSize = Utils.getCoreCount()*3;
+            poolSize = Utils.getCoreCount() * 3;
         }
         this.useSsl = settings.getProperty(DatabaseSettings.MYSQL_USE_SSL);
     }
 
+    /**
+     * Sets up the connection arguments to the database.
+     */
     private void setConnectionArguments() {
         ds = new HikariDataSource();
         ds.setPoolName("AuthMeMYSQLPool");
@@ -127,11 +137,11 @@ public class MySQL implements DataSource {
         ds.setPassword(this.password);
 
         // Request mysql over SSL
-        ds.addDataSourceProperty("useSSL", useSsl);
+        ds.addDataSourceProperty("useSSL", String.valueOf(useSsl));
 
         // Encoding
         ds.addDataSourceProperty("characterEncoding", "utf8");
-        ds.addDataSourceProperty("encoding","UTF-8");
+        ds.addDataSourceProperty("encoding", "UTF-8");
         ds.addDataSourceProperty("useUnicode", "true");
 
         // Random stuff
@@ -159,6 +169,9 @@ public class MySQL implements DataSource {
         return ds.getConnection();
     }
 
+    /**
+     * Creates the table or any of its required columns if they don't exist.
+     */
     private void checkTablesAndColumns() throws SQLException {
         try (Connection con = getConnection(); Statement st = con.createStatement()) {
             // Create table with ID column if it doesn't exist
@@ -260,15 +273,13 @@ public class MySQL implements DataSource {
     @Override
     public boolean isAuthAvailable(String user) {
         String sql = "SELECT " + col.NAME + " FROM " + tableName + " WHERE " + col.NAME + "=?;";
-        ResultSet rs = null;
         try (Connection con = getConnection(); PreparedStatement pst = con.prepareStatement(sql)) {
             pst.setString(1, user.toLowerCase());
-            rs = pst.executeQuery();
-            return rs.next();
+            try (ResultSet rs = pst.executeQuery()) {
+                return rs.next();
+            }
         } catch (SQLException ex) {
             logSqlException(ex);
-        } finally {
-            close(rs);
         }
         return false;
     }
@@ -309,7 +320,7 @@ public class MySQL implements DataSource {
             }
             if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
                 try (PreparedStatement pst2 = con.prepareStatement(
-                    "SELECT data FROM xf_user_authenticate WHERE " + col.ID + "=?;")) {
+                    "SELECT data FROM " + xfPrefix + "user_authenticate WHERE " + col.ID + "=?;")) {
                     pst2.setInt(1, id);
                     try (ResultSet rs = pst2.executeQuery()) {
                         if (rs.next()) {
@@ -330,9 +341,6 @@ public class MySQL implements DataSource {
     @Override
     public boolean saveAuth(PlayerAuth auth) {
         try (Connection con = getConnection()) {
-            PreparedStatement pst;
-            PreparedStatement pst2;
-            ResultSet rs;
             String sql;
 
             // TODO #792: Last login and last IP should be NULL here
@@ -341,255 +349,253 @@ public class MySQL implements DataSource {
                 + col.NAME + "," + col.PASSWORD + "," + col.LAST_IP + "," + col.LAST_LOGIN + "," + col.REAL_NAME
                 + "," + col.EMAIL + "," + col.REGISTRATION_DATE + "," + col.REGISTRATION_IP
                 + (useSalt ? "," + col.SALT : "")
-                + ") VALUES (?,?,?,?,?,?,?,?" + (useSalt ? ",?" : "") + ");";
-            pst = con.prepareStatement(sql);
-            pst.setString(1, auth.getNickname());
-            pst.setString(2, auth.getPassword().getHash());
-            pst.setString(3, auth.getLastIp());
-            pst.setLong(4, auth.getLastLogin());
-            pst.setString(5, auth.getRealName());
-            pst.setString(6, auth.getEmail());
-            pst.setLong(7, System.currentTimeMillis());
-            pst.setString(8, auth.getRegistrationIp());
-            if (useSalt) {
-                pst.setString(9, auth.getPassword().getSalt());
+                + ") VALUES (?,?,?,?,?,?" + (useSalt ? ",?" : "") + ");";
+            try (PreparedStatement pst = con.prepareStatement(sql)) {
+                pst.setString(1, auth.getNickname());
+                pst.setString(2, auth.getPassword().getHash());
+                pst.setString(3, auth.getLastIp());
+                pst.setLong(4, auth.getLastLogin());
+                pst.setString(5, auth.getRealName());
+                pst.setString(6, auth.getEmail());
+                if (useSalt) {
+                    pst.setString(7, auth.getPassword().getSalt());
+                }
+                pst.executeUpdate();
             }
-            pst.executeUpdate();
-            pst.close();
 
             if (!columnOthers.isEmpty()) {
                 for (String column : columnOthers) {
-                    pst = con.prepareStatement("UPDATE " + tableName + " SET " + column + "=? WHERE " + col.NAME + "=?;");
-                    pst.setString(1, auth.getRealName());
-                    pst.setString(2, auth.getNickname());
-                    pst.executeUpdate();
-                    pst.close();
+                    try (PreparedStatement pst = con.prepareStatement("UPDATE " + tableName + " SET " + column + "=? WHERE " + col.NAME + "=?;")) {
+                        pst.setString(1, auth.getRealName());
+                        pst.setString(2, auth.getNickname());
+                        pst.executeUpdate();
+                    }
                 }
             }
-            if (hashAlgorithm == HashAlgorithm.IPB4){
+            if (hashAlgorithm == HashAlgorithm.IPB4) {
                 sql = "SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;";
-                pst = con.prepareStatement(sql);
-                pst.setString(1, auth.getNickname());
-                rs = pst.executeQuery();
-                if (rs.next()){
-                    // Update player group in core_members
-                    sql = "UPDATE " + ipbPrefix + tableName + " SET "+ tableName + ".member_group_id=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, ipbGroup);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Get current time without ms
-                    long time = System.currentTimeMillis() / 1000;
-                    // update joined date
-                    sql = "UPDATE " + ipbPrefix + tableName + " SET "+ tableName + ".joined=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setLong(1, time);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update last_visit
-                    sql = "UPDATE " + ipbPrefix + tableName + " SET " + tableName + ".last_visit=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setLong(1, time);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setString(1, auth.getNickname());
+                    try (ResultSet rs = pst.executeQuery()) {
+                        if (rs.next()) {
+                            // Update player group in core_members
+                            sql = "UPDATE " + ipbPrefix + tableName + " SET " + tableName + ".member_group_id=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, ipbGroup);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Get current time without ms
+                            long time = System.currentTimeMillis() / 1000;
+                            // update joined date
+                            sql = "UPDATE " + ipbPrefix + tableName + " SET " + tableName + ".joined=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setLong(1, time);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Update last_visit
+                            sql = "UPDATE " + ipbPrefix + tableName + " SET " + tableName + ".last_visit=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setLong(1, time);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                        }
+                    }
                 }
-                rs.close();
-                pst.close();
-            } else if  (hashAlgorithm == HashAlgorithm.PHPBB) {
+            } else if (hashAlgorithm == HashAlgorithm.PHPBB) {
                 sql = "SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;";
-                pst = con.prepareStatement(sql);
-                pst.setString(1, auth.getNickname());
-                rs = pst.executeQuery();
-                if (rs.next()) {
-                    int id = rs.getInt(col.ID);
-                    // Insert player in phpbb_user_group
-                    sql = "INSERT INTO " + phpBbPrefix
-                        + "user_group (group_id, user_id, group_leader, user_pending) VALUES (?,?,?,?);";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, phpBbGroup);
-                    pst2.setInt(2, id);
-                    pst2.setInt(3, 0);
-                    pst2.setInt(4, 0);
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update username_clean in phpbb_users
-                    sql = "UPDATE " + tableName + " SET " + tableName
-                        + ".username_clean=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setString(1, auth.getNickname());
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update player group in phpbb_users
-                    sql = "UPDATE " + tableName + " SET " + tableName
-                        + ".group_id=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, phpBbGroup);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Get current time without ms
-                    long time = System.currentTimeMillis() / 1000;
-                    // Update user_regdate
-                    sql = "UPDATE " + tableName + " SET " + tableName
-                        + ".user_regdate=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setLong(1, time);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update user_lastvisit
-                    sql = "UPDATE " + tableName + " SET " + tableName
-                        + ".user_lastvisit=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setLong(1, time);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Increment num_users
-                    sql = "UPDATE " + phpBbPrefix
-                        + "config SET config_value = config_value + 1 WHERE config_name = 'num_users';";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.executeUpdate();
-                    pst2.close();
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setString(1, auth.getNickname());
+                    try (ResultSet rs = pst.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt(col.ID);
+                            // Insert player in phpbb_user_group
+                            sql = "INSERT INTO " + phpBbPrefix
+                                + "user_group (group_id, user_id, group_leader, user_pending) VALUES (?,?,?,?);";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, phpBbGroup);
+                                pst2.setInt(2, id);
+                                pst2.setInt(3, 0);
+                                pst2.setInt(4, 0);
+                                pst2.executeUpdate();
+                            }
+                            // Update username_clean in phpbb_users
+                            sql = "UPDATE " + tableName + " SET " + tableName
+                                + ".username_clean=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setString(1, auth.getNickname());
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Update player group in phpbb_users
+                            sql = "UPDATE " + tableName + " SET " + tableName
+                                + ".group_id=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, phpBbGroup);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Get current time without ms
+                            long time = System.currentTimeMillis() / 1000;
+                            // Update user_regdate
+                            sql = "UPDATE " + tableName + " SET " + tableName
+                                + ".user_regdate=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setLong(1, time);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Update user_lastvisit
+                            sql = "UPDATE " + tableName + " SET " + tableName
+                                + ".user_lastvisit=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setLong(1, time);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Increment num_users
+                            sql = "UPDATE " + phpBbPrefix
+                                + "config SET config_value = config_value + 1 WHERE config_name = 'num_users';";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.executeUpdate();
+                            }
+                        }
+                    }
                 }
-                rs.close();
-                pst.close();
             } else if (hashAlgorithm == HashAlgorithm.WORDPRESS) {
                 // NOTE: Eclipse says pst should be closed HERE, but it's a bug, we already close it above. -sgdc3
-                pst = con.prepareStatement("SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;");
-                pst.setString(1, auth.getNickname());
-                rs = pst.executeQuery();
-                if (rs.next()) {
-                    int id = rs.getInt(col.ID);
-                    sql = "INSERT INTO " + wordpressPrefix + "usermeta (user_id, meta_key, meta_value) VALUES (?,?,?)";
-                    pst2 = con.prepareStatement(sql);
-                    // First Name
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "first_name");
-                    pst2.setString(3, "");
-                    pst2.addBatch();
-                    // Last Name
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "last_name");
-                    pst2.setString(3, "");
-                    pst2.addBatch();
-                    // Nick Name
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "nickname");
-                    pst2.setString(3, auth.getNickname());
-                    pst2.addBatch();
-                    // Description
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "description");
-                    pst2.setString(3, "");
-                    pst2.addBatch();
-                    // Rich_Editing
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "rich_editing");
-                    pst2.setString(3, "true");
-                    pst2.addBatch();
-                    // Comments_Shortcuts
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "comment_shortcuts");
-                    pst2.setString(3, "false");
-                    pst2.addBatch();
-                    // admin_color
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "admin_color");
-                    pst2.setString(3, "fresh");
-                    pst2.addBatch();
-                    // use_ssl
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "use_ssl");
-                    pst2.setString(3, "0");
-                    pst2.addBatch();
-                    // show_admin_bar_front
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "show_admin_bar_front");
-                    pst2.setString(3, "true");
-                    pst2.addBatch();
-                    // wp_capabilities
-                    pst2.setInt(1, id);
-                    pst2.setString(2, wordpressPrefix + "capabilities");
-                    pst2.setString(3, "a:1:{s:10:\"subscriber\";b:1;}");
-                    pst2.addBatch();
-                    // wp_user_level
-                    pst2.setInt(1, id);
-                    pst2.setString(2, wordpressPrefix + "user_level");
-                    pst2.setString(3, "0");
-                    pst2.addBatch();
-                    // default_password_nag
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "default_password_nag");
-                    pst2.setString(3, "");
-                    pst2.addBatch();
+                try (PreparedStatement pst = con.prepareStatement("SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;")) {
+                    pst.setString(1, auth.getNickname());
+                    try (ResultSet rs = pst.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt(col.ID);
+                            sql = "INSERT INTO " + wordpressPrefix + "usermeta (user_id, meta_key, meta_value) VALUES (?,?,?)";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                // First Name
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "first_name");
+                                pst2.setString(3, "");
+                                pst2.addBatch();
+                                // Last Name
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "last_name");
+                                pst2.setString(3, "");
+                                pst2.addBatch();
+                                // Nick Name
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "nickname");
+                                pst2.setString(3, auth.getNickname());
+                                pst2.addBatch();
+                                // Description
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "description");
+                                pst2.setString(3, "");
+                                pst2.addBatch();
+                                // Rich_Editing
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "rich_editing");
+                                pst2.setString(3, "true");
+                                pst2.addBatch();
+                                // Comments_Shortcuts
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "comment_shortcuts");
+                                pst2.setString(3, "false");
+                                pst2.addBatch();
+                                // admin_color
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "admin_color");
+                                pst2.setString(3, "fresh");
+                                pst2.addBatch();
+                                // use_ssl
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "use_ssl");
+                                pst2.setString(3, "0");
+                                pst2.addBatch();
+                                // show_admin_bar_front
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "show_admin_bar_front");
+                                pst2.setString(3, "true");
+                                pst2.addBatch();
+                                // wp_capabilities
+                                pst2.setInt(1, id);
+                                pst2.setString(2, wordpressPrefix + "capabilities");
+                                pst2.setString(3, "a:1:{s:10:\"subscriber\";b:1;}");
+                                pst2.addBatch();
+                                // wp_user_level
+                                pst2.setInt(1, id);
+                                pst2.setString(2, wordpressPrefix + "user_level");
+                                pst2.setString(3, "0");
+                                pst2.addBatch();
+                                // default_password_nag
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "default_password_nag");
+                                pst2.setString(3, "");
+                                pst2.addBatch();
 
-                    // Execute queries
-                    pst2.executeBatch();
-                    pst2.clearBatch();
-                    pst2.close();
+                                // Execute queries
+                                pst2.executeBatch();
+                                pst2.clearBatch();
+                            }
+                        }
+                    }
                 }
-                rs.close();
-                pst.close();
             } else if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
                 // NOTE: Eclipse says pst should be closed HERE, but it's a bug, we already close it above. -sgdc3
-                pst = con.prepareStatement("SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;");
-                pst.setString(1, auth.getNickname());
-                rs = pst.executeQuery();
-                if (rs.next()) {                    
-                    int id = rs.getInt(col.ID);
-                    // Insert player password, salt in xf_user_authenticate
-                    sql = "INSERT INTO xf_user_authenticate (user_id, scheme_class, data) VALUES (?,?,?)";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, id);
-                    pst2.setString(2, XfBCrypt.SCHEME_CLASS);
-                    String serializedHash = XfBCrypt.serializeHash(auth.getPassword().getHash());
-                    byte[] bytes = serializedHash.getBytes();
-                    Blob blob = con.createBlob();
-                    blob.setBytes(1, bytes);
-                    pst2.setBlob(3, blob);
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update player group in xf_users
-                    sql = "UPDATE " + tableName + " SET "+ tableName + ".user_group_id=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, xfGroup);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Update player permission combination in xf_users
-                    sql = "UPDATE " + tableName + " SET "+ tableName + ".permission_combination_id=? WHERE " + col.NAME + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, xfGroup);
-                    pst2.setString(2, auth.getNickname());
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Insert player privacy combination in xf_user_privacy
-                    sql = "INSERT INTO xf_user_privacy (user_id, allow_view_profile, allow_post_profile, allow_send_personal_conversation, allow_view_identities, allow_receive_news_feed) VALUES (?,?,?,?,?,?)";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, id);
-                    pst2.setString(2, "everyone");
-                    pst2.setString(3, "members");
-                    pst2.setString(4, "members");
-                    pst2.setString(5, "everyone");
-                    pst2.setString(6, "everyone");
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // Insert player group relation in xf_user_group_relation
-                    sql = "INSERT INTO xf_user_group_relation (user_id, user_group_id, is_primary) VALUES (?,?,?)";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setInt(1, id);
-                    pst2.setInt(2, xfGroup);
-                    pst2.setString(3, "1");
-                    pst2.executeUpdate();
-                    pst2.close();
+                try (PreparedStatement pst = con.prepareStatement("SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;")) {
+                    pst.setString(1, auth.getNickname());
+                    try (ResultSet rs = pst.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt(col.ID);
+                            // Insert player password, salt in xf_user_authenticate
+                            sql = "INSERT INTO " + xfPrefix + "user_authenticate (user_id, scheme_class, data) VALUES (?,?,?)";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, id);
+                                pst2.setString(2, XfBCrypt.SCHEME_CLASS);
+                                String serializedHash = XfBCrypt.serializeHash(auth.getPassword().getHash());
+                                byte[] bytes = serializedHash.getBytes();
+                                Blob blob = con.createBlob();
+                                blob.setBytes(1, bytes);
+                                pst2.setBlob(3, blob);
+                                pst2.executeUpdate();
+                            }
+                            // Update player group in xf_users
+                            sql = "UPDATE " + tableName + " SET " + tableName + ".user_group_id=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, xfGroup);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Update player permission combination in xf_users
+                            sql = "UPDATE " + tableName + " SET " + tableName + ".permission_combination_id=? WHERE " + col.NAME + "=?;";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, xfGroup);
+                                pst2.setString(2, auth.getNickname());
+                                pst2.executeUpdate();
+                            }
+                            // Insert player privacy combination in xf_user_privacy
+                            sql = "INSERT INTO " + xfPrefix + "user_privacy (user_id, allow_view_profile, allow_post_profile, allow_send_personal_conversation, allow_view_identities, allow_receive_news_feed) VALUES (?,?,?,?,?,?)";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, id);
+                                pst2.setString(2, "everyone");
+                                pst2.setString(3, "members");
+                                pst2.setString(4, "members");
+                                pst2.setString(5, "everyone");
+                                pst2.setString(6, "everyone");
+                                pst2.executeUpdate();
+                            }
+                            // Insert player group relation in xf_user_group_relation
+                            sql = "INSERT INTO " + xfPrefix + "user_group_relation (user_id, user_group_id, is_primary) VALUES (?,?,?)";
+                            try (PreparedStatement pst2 = con.prepareStatement(sql)) {
+                                pst2.setInt(1, id);
+                                pst2.setInt(2, xfGroup);
+                                pst2.setString(3, "1");
+                                pst2.executeUpdate();
+                            }
+                        }
+                    }
                 }
-                rs.close();
-                pst.close();
             }
             return true;
         } catch (SQLException ex) {
@@ -608,51 +614,52 @@ public class MySQL implements DataSource {
         user = user.toLowerCase();
         try (Connection con = getConnection()) {
             boolean useSalt = !col.SALT.isEmpty();
-            PreparedStatement pst;
             if (useSalt) {
                 String sql = String.format("UPDATE %s SET %s = ?, %s = ? WHERE %s = ?;",
                     tableName, col.PASSWORD, col.SALT, col.NAME);
-                pst = con.prepareStatement(sql);
-                pst.setString(1, password.getHash());
-                pst.setString(2, password.getSalt());
-                pst.setString(3, user);
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setString(1, password.getHash());
+                    pst.setString(2, password.getSalt());
+                    pst.setString(3, user);
+                    pst.executeUpdate();
+                }
             } else {
                 String sql = String.format("UPDATE %s SET %s = ? WHERE %s = ?;",
                     tableName, col.PASSWORD, col.NAME);
-                pst = con.prepareStatement(sql);
-                pst.setString(1, password.getHash());
-                pst.setString(2, user);
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setString(1, password.getHash());
+                    pst.setString(2, user);
+                    pst.executeUpdate();
+                }
             }
-            pst.executeUpdate();
-            pst.close();
             if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
                 String sql = "SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;";
-                pst = con.prepareStatement(sql);
-                pst.setString(1, user);
-                ResultSet rs = pst.executeQuery();
-                if (rs.next()) {
-                    int id = rs.getInt(col.ID);
-                    // Insert password in the correct table
-                    sql = "UPDATE xf_user_authenticate SET data=? WHERE " + col.ID + "=?;";
-                    PreparedStatement pst2 = con.prepareStatement(sql);
-                    String serializedHash = XfBCrypt.serializeHash(password.getHash());
-                    byte[] bytes = serializedHash.getBytes();
-                    Blob blob = con.createBlob();
-                    blob.setBytes(1, bytes);
-                    pst2.setBlob(1, blob);
-                    pst2.setInt(2, id);
-                    pst2.executeUpdate();
-                    pst2.close();
-                    // ...
-                    sql = "UPDATE xf_user_authenticate SET scheme_class=? WHERE " + col.ID + "=?;";
-                    pst2 = con.prepareStatement(sql);
-                    pst2.setString(1, XfBCrypt.SCHEME_CLASS);
-                    pst2.setInt(2, id);
-                    pst2.executeUpdate();
-                    pst2.close();
+                try (PreparedStatement pst = con.prepareStatement(sql)) {
+                    pst.setString(1, user);
+                    try (ResultSet rs = pst.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt(col.ID);
+                            // Insert password in the correct table
+                            sql = "UPDATE " + xfPrefix + "user_authenticate SET data=? WHERE " + col.ID + "=?;";
+                            PreparedStatement pst2 = con.prepareStatement(sql);
+                            String serializedHash = XfBCrypt.serializeHash(password.getHash());
+                            byte[] bytes = serializedHash.getBytes();
+                            Blob blob = con.createBlob();
+                            blob.setBytes(1, bytes);
+                            pst2.setBlob(1, blob);
+                            pst2.setInt(2, id);
+                            pst2.executeUpdate();
+                            pst2.close();
+                            // ...
+                            sql = "UPDATE " + xfPrefix + "user_authenticate SET scheme_class=? WHERE " + col.ID + "=?;";
+                            pst2 = con.prepareStatement(sql);
+                            pst2.setString(1, XfBCrypt.SCHEME_CLASS);
+                            pst2.setInt(2, id);
+                            pst2.executeUpdate();
+                            pst2.close();
+                        }
+                    }
                 }
-                rs.close();
-                pst.close();
             }
             return true;
         } catch (SQLException ex) {
@@ -681,7 +688,6 @@ public class MySQL implements DataSource {
     @Override
     public Set<String> getRecordsToPurge(long until, boolean includeEntriesWithLastLoginZero) {
         Set<String> list = new HashSet<>();
-
         String select = "SELECT " + col.NAME + " FROM " + tableName + " WHERE " + col.LAST_LOGIN + " < ?";
         if (!includeEntriesWithLastLoginZero) {
             select += " AND " + col.LAST_LOGIN + " <> 0";
@@ -705,20 +711,20 @@ public class MySQL implements DataSource {
     public boolean removeAuth(String user) {
         user = user.toLowerCase();
         String sql = "DELETE FROM " + tableName + " WHERE " + col.NAME + "=?;";
-        PreparedStatement xfSelect = null;
-        PreparedStatement xfDelete = null;
         try (Connection con = getConnection(); PreparedStatement pst = con.prepareStatement(sql)) {
             if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
                 sql = "SELECT " + col.ID + " FROM " + tableName + " WHERE " + col.NAME + "=?;";
-                xfSelect = con.prepareStatement(sql);
-                xfSelect.setString(1, user);
-                try (ResultSet rs = xfSelect.executeQuery()) {
-                    if (rs.next()) {
-                        int id = rs.getInt(col.ID);
-                        sql = "DELETE FROM xf_user_authenticate WHERE " + col.ID + "=?;";
-                        xfDelete = con.prepareStatement(sql);
-                        xfDelete.setInt(1, id);
-                        xfDelete.executeUpdate();
+                try (PreparedStatement xfSelect = con.prepareStatement(sql)) {
+                    xfSelect.setString(1, user);
+                    try (ResultSet rs = xfSelect.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt(col.ID);
+                            sql = "DELETE FROM " + xfPrefix + "user_authenticate WHERE " + col.ID + "=?;";
+                            try (PreparedStatement xfDelete = con.prepareStatement(sql)) {
+                                xfDelete.setInt(1, id);
+                                xfDelete.executeUpdate();
+                            }
+                        }
                     }
                 }
             }
@@ -727,9 +733,6 @@ public class MySQL implements DataSource {
             return true;
         } catch (SQLException ex) {
             logSqlException(ex);
-        } finally {
-            close(xfSelect);
-            close(xfDelete);
         }
         return false;
     }
@@ -928,27 +931,27 @@ public class MySQL implements DataSource {
     public List<PlayerAuth> getAllAuths() {
         List<PlayerAuth> auths = new ArrayList<>();
         try (Connection con = getConnection()) {
-            Statement st = con.createStatement();
-            ResultSet rs = st.executeQuery("SELECT * FROM " + tableName);
-            while (rs.next()) {
-                PlayerAuth pAuth = buildAuthFromResultSet(rs);
-                if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
-                    try (PreparedStatement pst = con.prepareStatement("SELECT data FROM xf_user_authenticate WHERE " + col.ID + "=?;")) {
-                        int id = rs.getInt(col.ID);
-                        pst.setInt(1, id);
-                        ResultSet rs2 = pst.executeQuery();
-                        if (rs2.next()) {
-                            Blob blob = rs2.getBlob("data");
-                            byte[] bytes = blob.getBytes(1, (int) blob.length());
-                            pAuth.setPassword(new HashedPassword(XfBCrypt.getHashFromBlob(bytes)));
+            try (Statement st = con.createStatement()) {
+                try (ResultSet rs = st.executeQuery("SELECT * FROM " + tableName)) {
+                    while (rs.next()) {
+                        PlayerAuth pAuth = buildAuthFromResultSet(rs);
+                        if (hashAlgorithm == HashAlgorithm.XFBCRYPT) {
+                            try (PreparedStatement pst = con.prepareStatement("SELECT data FROM " + xfPrefix + "user_authenticate WHERE " + col.ID + "=?;")) {
+                                int id = rs.getInt(col.ID);
+                                pst.setInt(1, id);
+                                ResultSet rs2 = pst.executeQuery();
+                                if (rs2.next()) {
+                                    Blob blob = rs2.getBlob("data");
+                                    byte[] bytes = blob.getBytes(1, (int) blob.length());
+                                    pAuth.setPassword(new HashedPassword(XfBCrypt.getHashFromBlob(bytes)));
+                                }
+                                rs2.close();
+                            }
                         }
-                        rs2.close();
+                        auths.add(pAuth);
                     }
                 }
-                auths.add(pAuth);
             }
-            rs.close();
-            st.close();
         } catch (SQLException ex) {
             logSqlException(ex);
         }
@@ -1027,8 +1030,9 @@ public class MySQL implements DataSource {
     /**
      * Checks if the last login column has a type that needs to be migrated.
      *
-     * @param con connection to the database
+     * @param con      connection to the database
      * @param metaData lastlogin column meta data
+     *
      * @throws SQLException .
      */
     private void migrateLastLoginColumn(Connection con, DatabaseMetaData metaData) throws SQLException {
@@ -1060,8 +1064,9 @@ public class MySQL implements DataSource {
         // Rename lastlogin to lastlogin_old
         String sql = String.format("ALTER TABLE %s CHANGE COLUMN %s %s BIGINT",
             tableName, col.LAST_LOGIN, lastLoginOld);
-        PreparedStatement pst = con.prepareStatement(sql);
-        pst.execute();
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.execute();
+        }
 
         // Create lastlogin column
         sql = String.format("ALTER TABLE %s ADD COLUMN %s "

@@ -5,24 +5,29 @@ import fr.xephi.authme.data.auth.PlayerAuth;
 import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.data.limbo.LimboService;
 import fr.xephi.authme.datasource.DataSource;
+import fr.xephi.authme.events.AbstractUnregisterEvent;
 import fr.xephi.authme.message.MessageKey;
-import fr.xephi.authme.permission.AuthGroupHandler;
-import fr.xephi.authme.permission.AuthGroupType;
 import fr.xephi.authme.security.PasswordSecurity;
 import fr.xephi.authme.security.crypts.HashedPassword;
 import fr.xephi.authme.service.BukkitService;
 import fr.xephi.authme.service.CommonService;
 import fr.xephi.authme.service.TeleportationService;
+import fr.xephi.authme.settings.commandconfig.CommandManager;
 import fr.xephi.authme.settings.properties.RegistrationSettings;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import java.util.function.Function;
+
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -55,7 +60,7 @@ public class AsynchronousUnregisterTest {
     @Mock
     private TeleportationService teleportationService;
     @Mock
-    private AuthGroupHandler authGroupHandler;
+    private CommandManager commandManager;
 
     @BeforeClass
     public static void initLogger() {
@@ -81,7 +86,7 @@ public class AsynchronousUnregisterTest {
         // then
         verify(service).send(player, MessageKey.WRONG_PASSWORD);
         verify(passwordSecurity).comparePassword(userPassword, password, name);
-        verifyZeroInteractions(dataSource, limboService, authGroupHandler, teleportationService);
+        verifyZeroInteractions(dataSource, limboService, teleportationService, bukkitService);
         verify(player, only()).getName();
     }
 
@@ -110,8 +115,9 @@ public class AsynchronousUnregisterTest {
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
         verify(teleportationService).teleportOnJoin(player);
-        verify(authGroupHandler).setGroup(player, AuthGroupType.UNREGISTERED);
         verify(bukkitService).scheduleSyncTaskFromOptionallyAsyncTask(any(Runnable.class));
+        verifyCalledUnregisterEventFor(player);
+        verify(commandManager).runCommandsOnUnregister(player);
     }
 
     @Test
@@ -139,8 +145,9 @@ public class AsynchronousUnregisterTest {
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
         verify(teleportationService).teleportOnJoin(player);
-        verify(authGroupHandler).setGroup(player, AuthGroupType.UNREGISTERED);
         verify(bukkitService).scheduleSyncTaskFromOptionallyAsyncTask(any(Runnable.class));
+        verifyCalledUnregisterEventFor(player);
+        verify(commandManager).runCommandsOnUnregister(player);
     }
 
     @Test
@@ -166,9 +173,10 @@ public class AsynchronousUnregisterTest {
         verify(passwordSecurity).comparePassword(userPassword, password, name);
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
-        verify(authGroupHandler).setGroup(player, AuthGroupType.UNREGISTERED);
         verifyZeroInteractions(teleportationService, limboService);
         verify(bukkitService, never()).runTask(any(Runnable.class));
+        verifyCalledUnregisterEventFor(player);
+        verify(commandManager).runCommandsOnUnregister(player);
     }
 
     @Test
@@ -192,7 +200,7 @@ public class AsynchronousUnregisterTest {
         verify(passwordSecurity).comparePassword(userPassword, password, name);
         verify(dataSource).removeAuth(name);
         verify(service).send(player, MessageKey.ERROR);
-        verifyZeroInteractions(teleportationService, authGroupHandler, bukkitService);
+        verifyZeroInteractions(teleportationService, bukkitService);
     }
 
     @Test
@@ -217,7 +225,8 @@ public class AsynchronousUnregisterTest {
         verify(passwordSecurity).comparePassword(userPassword, password, name);
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
-        verifyZeroInteractions(teleportationService, authGroupHandler);
+        verifyZeroInteractions(teleportationService);
+        verifyCalledUnregisterEventFor(player);
     }
 
     // Initiator known and Player object available
@@ -240,8 +249,9 @@ public class AsynchronousUnregisterTest {
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
         verify(teleportationService).teleportOnJoin(player);
-        verify(authGroupHandler).setGroup(player, AuthGroupType.UNREGISTERED);
         verify(bukkitService).scheduleSyncTaskFromOptionallyAsyncTask(any(Runnable.class));
+        verifyCalledUnregisterEventFor(player);
+        verify(commandManager).runCommandsOnUnregister(player);
     }
 
     @Test
@@ -256,7 +266,8 @@ public class AsynchronousUnregisterTest {
         // then
         verify(dataSource).removeAuth(name);
         verify(playerCache).removePlayer(name);
-        verifyZeroInteractions(authGroupHandler, teleportationService);
+        verifyZeroInteractions(teleportationService);
+        verifyCalledUnregisterEventFor(null);
     }
 
     @Test
@@ -272,6 +283,15 @@ public class AsynchronousUnregisterTest {
         // then
         verify(dataSource).removeAuth(name);
         verify(service).send(initiator, MessageKey.ERROR);
-        verifyZeroInteractions(playerCache, teleportationService, authGroupHandler);
+        verifyZeroInteractions(playerCache, teleportationService, bukkitService);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void verifyCalledUnregisterEventFor(Player player) {
+        ArgumentCaptor<Function<Boolean, AbstractUnregisterEvent>> eventFunctionCaptor =
+            ArgumentCaptor.forClass(Function.class);
+        verify(bukkitService).createAndCallEvent(eventFunctionCaptor.capture());
+        AbstractUnregisterEvent event = eventFunctionCaptor.getValue().apply(true);
+        assertThat(event.getPlayer(), equalTo(player));
     }
 }

@@ -93,6 +93,21 @@ public class CommandManagerTest {
     }
 
     @Test
+    public void shouldExecuteCommandsOnSessionLogin() {
+        // given
+        copyJarFileAsCommandsYml(TEST_FILES_FOLDER + "commands.complete.yml");
+        initManager();
+
+        // when
+        manager.runCommandsOnSessionLogin(player);
+
+        // then
+        verify(bukkitService).dispatchConsoleCommand("msg Bobby Session login!");
+        verifyNoMoreInteractions(bukkitService);
+        verifyZeroInteractions(geoIpService);
+    }
+
+    @Test
     public void shouldExecuteCommandsOnJoin() {
         // given
         copyJarFileAsCommandsYml(TEST_FILES_FOLDER + "commands.complete.yml");
@@ -133,6 +148,21 @@ public class CommandManagerTest {
         verify(bukkitService).dispatchCommand(any(Player.class), eq("me I just registered"));
         verify(bukkitService).dispatchConsoleCommand("log Bobby (127.0.0.3, Syldavia) registered");
         verifyNoMoreInteractions(bukkitService);
+    }
+
+    @Test
+    public void shouldExecuteCommandOnLogout() {
+        // given
+        copyJarFileAsCommandsYml(TEST_FILES_FOLDER + "commands.complete.yml");
+        initManager();
+
+        // when
+        manager.runCommandsOnLogout(player);
+
+        // then
+        verify(bukkitService).dispatchConsoleCommand("broadcast Bobby (127.0.0.3) logged out");
+        verifyNoMoreInteractions(bukkitService);
+        verifyZeroInteractions(geoIpService);
     }
 
     @Test

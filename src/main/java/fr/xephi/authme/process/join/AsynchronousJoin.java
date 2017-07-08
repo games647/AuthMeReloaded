@@ -7,8 +7,8 @@ import fr.xephi.authme.data.auth.PlayerCache;
 import fr.xephi.authme.data.limbo.LimboService;
 import fr.xephi.authme.datasource.DataSource;
 import fr.xephi.authme.events.ProtectInventoryEvent;
+import fr.xephi.authme.events.RestoreSessionEvent;
 import fr.xephi.authme.message.MessageKey;
-import fr.xephi.authme.permission.AuthGroupType;
 import fr.xephi.authme.permission.PlayerStatePermission;
 import fr.xephi.authme.process.AsynchronousProcess;
 import fr.xephi.authme.process.login.AsynchronousLogin;
@@ -18,7 +18,6 @@ import fr.xephi.authme.service.PluginHookService;
 import fr.xephi.authme.service.ValidationService;
 import fr.xephi.authme.settings.commandconfig.CommandManager;
 import fr.xephi.authme.settings.properties.HooksSettings;
-import fr.xephi.authme.settings.properties.PluginSettings;
 import fr.xephi.authme.settings.properties.RegistrationSettings;
 import fr.xephi.authme.settings.properties.RestrictionSettings;
 import fr.xephi.authme.util.PlayerUtils;
@@ -111,13 +110,10 @@ public class AsynchronousJoin implements AsynchronousProcess {
         final boolean isAuthAvailable = database.isAuthAvailable(name);
 
         if (isAuthAvailable) {
-            service.setGroup(player, AuthGroupType.REGISTERED_UNAUTHENTICATED);
-
             // Protect inventory
             if (service.getProperty(PROTECT_INVENTORY_BEFORE_LOGIN)) {
-                final boolean isAsync = service.getProperty(PluginSettings.USE_ASYNC_TASKS);
-                ProtectInventoryEvent ev = new ProtectInventoryEvent(player, isAsync);
-                bukkitService.callEvent(ev);
+                ProtectInventoryEvent ev = bukkitService.createAndCallEvent(
+                    isAsync -> new ProtectInventoryEvent(player, isAsync));
                 if (ev.isCancelled()) {
                     player.updateInventory();
                     ConsoleLogger.fine("ProtectInventoryEvent has been cancelled for " + player.getName() + "...");
@@ -125,28 +121,16 @@ public class AsynchronousJoin implements AsynchronousProcess {
             }
 
             // Session logic
-            if (sessionManager.hasSession(name) || database.isLogged(name)) {
-                PlayerAuth auth = database.getAuth(name);
-                database.setUnlogged(name);
-                playerCache.removePlayer(name);
-                if (auth != null) {
-                    if (ip.equals(auth.getLastIp())) {
-                        service.send(player, MessageKey.SESSION_RECONNECTION);
-                        bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
-                        return;
-                    } else {
-                        service.send(player, MessageKey.SESSION_EXPIRED);
-                    }
-                }
-            }
-        } else {
-            // Groups logic
-            service.setGroup(player, AuthGroupType.UNREGISTERED);
-
-            // Skip if registration is optional
-            if (!service.getProperty(RegistrationSettings.FORCE)) {
+            if (canResumeSession(player)) {
+                service.send(player, MessageKey.SESSION_RECONNECTION);
+                // Run commands
+                bukkitService.scheduleSyncTaskFromOptionallyAsyncTask(() -> commandManager.runCommandsOnSessionLogin(player));
+                bukkitService.runTaskOptionallyAsync(() -> asynchronousLogin.forceLogin(player));
                 return;
             }
+        } else if (!service.getProperty(RegistrationSettings.FORCE)) {
+            // Skip if registration is optional
+            return;
         }
 
         final int registrationTimeout = service.getProperty(RestrictionSettings.TIMEOUT) * TICKS_PER_SECOND;
@@ -165,6 +149,25 @@ public class AsynchronousJoin implements AsynchronousProcess {
             }
             commandManager.runCommandsOnJoin(player);
         });
+    }
+
+    private boolean canResumeSession(Player player) {
+        final String name = player.getName();
+        if (sessionManager.hasSession(name) || database.isLogged(name)) {
+            PlayerAuth auth = database.getAuth(name);
+            database.setUnlogged(name);
+            playerCache.removePlayer(name);
+            if (auth != null) {
+                if (auth.getIp().equals(PlayerUtils.getPlayerIp(player))) {
+                    RestoreSessionEvent event = bukkitService.createAndCallEvent(
+                        isAsync -> new RestoreSessionEvent(player, isAsync));
+                    return !event.isCancelled();
+                } else {
+                    service.send(player, MessageKey.SESSION_EXPIRED);
+                }
+            }
+        }
+        return false;
     }
 
     /**

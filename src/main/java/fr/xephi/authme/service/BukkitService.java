@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Service for operations requiring the Bukkit API, such as for scheduling.
@@ -198,6 +199,23 @@ public class BukkitService implements SettingsDependent {
     }
 
     /**
+     * Gets the player by the given name, regardless if they are offline or
+     * online.
+     * <p>
+     * This method may involve a blocking web request to get the UUID for the
+     * given name.
+     * <p>
+     * This will return an object even if the player does not exist. To this
+     * method, all players will exist.
+     *
+     * @param name the name the player to retrieve
+     * @return an offline player
+     */
+    public OfflinePlayer getOfflinePlayer(String name) {
+        return authMe.getServer().getOfflinePlayer(name);
+    }
+
+    /**
      * Gets a set containing all banned players.
      *
      * @return a set containing banned players
@@ -261,6 +279,20 @@ public class BukkitService implements SettingsDependent {
      */
     public void callEvent(Event event) {
         Bukkit.getPluginManager().callEvent(event);
+    }
+
+    /**
+     * Creates an event with the provided function and emits it.
+     *
+     * @param eventSupplier the event supplier: function taking a boolean specifying whether AuthMe is configured
+     *                      in async mode or not
+     * @param <E> the event type
+     * @return the event that was created and emitted
+     */
+    public <E extends Event> E createAndCallEvent(Function<Boolean, E> eventSupplier) {
+        E event = eventSupplier.apply(useAsyncTasks);
+        callEvent(event);
+        return event;
     }
 
     /**

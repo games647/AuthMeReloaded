@@ -19,6 +19,8 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -61,6 +63,9 @@ public class LimboServiceTest {
     @Mock
     private LimboPersistence limboPersistence;
 
+    @Mock
+    private AuthGroupHandler authGroupHandler;
+
     @BeforeClass
     public static void initLogger() {
         TestHelper.setupLogger();
@@ -78,7 +83,7 @@ public class LimboServiceTest {
         Location playerLoc = mock(Location.class);
         given(spawnLoader.getPlayerLocationOrSpawn(player)).willReturn(playerLoc);
         given(permissionsManager.hasGroupSupport()).willReturn(true);
-        given(permissionsManager.getPrimaryGroup(player)).willReturn("permgrwp");
+        given(permissionsManager.getGroups(player)).willReturn(Collections.singletonList("permgrwp"));
 
         // when
         limboService.createLimboPlayer(player, true);
@@ -92,13 +97,14 @@ public class LimboServiceTest {
 
         assertThat(limboService.hasLimboPlayer("Bobby"), equalTo(true));
         LimboPlayer limbo = limboService.getLimboPlayer("Bobby");
+        verify(authGroupHandler).setGroup(player, limbo, AuthGroupType.REGISTERED_UNAUTHENTICATED);
         assertThat(limbo, not(nullValue()));
         assertThat(limbo.isOperator(), equalTo(true));
         assertThat(limbo.getWalkSpeed(), equalTo(0.3f));
         assertThat(limbo.isCanFly(), equalTo(false));
         assertThat(limbo.getFlySpeed(), equalTo(0.2f));
         assertThat(limbo.getLocation(), equalTo(playerLoc));
-        assertThat(limbo.getGroup(), equalTo("permgrwp"));
+        assertThat(limbo.getGroups(), equalTo(Collections.singletonList("permgrwp")));
     }
 
     @Test
@@ -121,13 +127,14 @@ public class LimboServiceTest {
         verify(player).setWalkSpeed(0.0f);
 
         LimboPlayer limbo = limboService.getLimboPlayer("charles");
+        verify(authGroupHandler).setGroup(player, limbo, AuthGroupType.UNREGISTERED);
         assertThat(limbo, not(nullValue()));
         assertThat(limbo.isOperator(), equalTo(false));
         assertThat(limbo.getWalkSpeed(), equalTo(0.1f));
         assertThat(limbo.isCanFly(), equalTo(true));
         assertThat(limbo.getFlySpeed(), equalTo(0.4f));
         assertThat(limbo.getLocation(), equalTo(playerLoc));
-        assertThat(limbo.getGroup(), equalTo(""));
+        assertThat(limbo.getGroups(), equalTo(Collections.emptyList()));
     }
 
     @Test
@@ -143,6 +150,7 @@ public class LimboServiceTest {
         // then
         verify(existingLimbo).clearTasks();
         LimboPlayer newLimbo = limboService.getLimboPlayer("Carlos");
+        verify(authGroupHandler).setGroup(player, newLimbo, AuthGroupType.UNREGISTERED);
         assertThat(newLimbo, not(nullValue()));
         assertThat(newLimbo, not(sameInstance(existingLimbo)));
     }
@@ -151,7 +159,7 @@ public class LimboServiceTest {
     public void shouldRestoreData() {
         // given
         LimboPlayer limbo = Mockito.spy(convertToLimboPlayer(
-            newPlayer("John", true, 0.4f, false, 0.0f), null, ""));
+            newPlayer("John", true, 0.4f, false, 0.0f), null, Collections.emptyList()));
         getLimboMap().put("john", limbo);
         Player player = newPlayer("John", false, 0.2f, false, 0.7f);
 
@@ -168,6 +176,7 @@ public class LimboServiceTest {
         verify(player).setAllowFlight(true);
         verify(player).setFlySpeed(LimboPlayer.DEFAULT_FLY_SPEED);
         verify(limbo).clearTasks();
+        verify(authGroupHandler).setGroup(player, limbo, AuthGroupType.LOGGED_IN);
         assertThat(limboService.hasLimboPlayer("John"), equalTo(false));
     }
 
@@ -181,6 +190,7 @@ public class LimboServiceTest {
 
         // then
         verify(player, only()).getName();
+        verify(authGroupHandler).setGroup(player, null, AuthGroupType.LOGGED_IN);
     }
 
     @Test
@@ -197,6 +207,7 @@ public class LimboServiceTest {
         // then
         verify(taskManager).registerTimeoutTask(player, limbo);
         verify(taskManager).registerMessageTask(player, limbo, true);
+        verify(authGroupHandler).setGroup(player, limbo, AuthGroupType.REGISTERED_UNAUTHENTICATED);
     }
 
     @Test
@@ -209,6 +220,7 @@ public class LimboServiceTest {
 
         // then
         verifyZeroInteractions(taskManager);
+        verify(authGroupHandler).setGroup(player, null, AuthGroupType.REGISTERED_UNAUTHENTICATED);
     }
 
     private static Player newPlayer(String name) {
@@ -226,8 +238,8 @@ public class LimboServiceTest {
         return player;
     }
 
-    private static LimboPlayer convertToLimboPlayer(Player player, Location location, String group) {
-        return new LimboPlayer(location, player.isOp(), group, player.getAllowFlight(),
+    private static LimboPlayer convertToLimboPlayer(Player player, Location location, Collection<String> groups) {
+        return new LimboPlayer(location, player.isOp(), groups, player.getAllowFlight(),
             player.getWalkSpeed(), player.getFlySpeed());
     }
 

@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.google.common.base.Objects.firstNonNull;
+import static com.google.common.base.MoreObjects.firstNonNull;
 
 /**
  * Generates the translations page in docs.
@@ -112,6 +112,7 @@ public class TranslationPageGenerator implements AutoToolTask {
             .put("de", "German")
             .put("en", "English")
             .put("es", "Spanish")
+            .put("et", "Estonian")
             .put("eu", "Basque")
             .put("fi", "Finnish")
             .put("fr", "French")

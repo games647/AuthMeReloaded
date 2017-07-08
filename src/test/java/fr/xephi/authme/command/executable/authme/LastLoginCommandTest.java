@@ -90,8 +90,8 @@ public class LastLoginCommandTest {
         CommandSender sender = mock(CommandSender.class);
         given(sender.getName()).willReturn(name);
 
-        long lastLogin = System.currentTimeMillis() -
-            (412 * DAY_IN_MSEC + 10 * HOUR_IN_MSEC - 9000);
+        long lastLogin = System.currentTimeMillis()
+            - (412 * DAY_IN_MSEC + 10 * HOUR_IN_MSEC - 9000);
         PlayerAuth auth = mock(PlayerAuth.class);
         given(auth.getLastLogin()).willReturn(lastLogin);
         given(auth.getLastIp()).willReturn("123.45.66.77");

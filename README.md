@@ -1,4 +1,4 @@
-<p align="center"><img src="http://i61.tinypic.com/291dm49.png"></p>
+<p align="center"><img src="http://i63.tinypic.com/rtp06o.png"></p>
 <p align="center"><strong>The most used authentication plugin for the Spigot and derivates!</strong></p>
 <hr>
 
@@ -13,7 +13,7 @@
   - CircleCI: [![CircleCI](https://circleci.com/gh/AuthMe/AuthMeReloaded.svg?style=svg)](https://circleci.com/gh/AuthMe/AuthMeReloaded)
 
 - Project status:
-  - Dependencies: [![Dependencies status](https://www.versioneye.com/user/projects/58e052a224ef3e003b526d78/badge.svg)](https://www.versioneye.com/user/projects/58e052a224ef3e003b526d78)
+  - Dependencies: [![Dependency Status](https://www.versioneye.com/user/projects/5957e09b0fb24f0070ba13c0/badge.svg?style=flat-square)](https://www.versioneye.com/user/projects/5957e09b0fb24f0070ba13c0)
   - Test coverage: [![Coverage status](https://coveralls.io/repos/AuthMe-Team/AuthMeReloaded/badge.svg?branch=master&service=github)](https://coveralls.io/github/AuthMe-Team/AuthMeReloaded?branch=master)
   - Code climate: [![Code Climate](https://codeclimate.com/github/AuthMe/AuthMeReloaded/badges/gpa.svg)](https://codeclimate.com/github/AuthMe/AuthMeReloaded)
 
@@ -37,7 +37,9 @@
 
 ##### Running requirements:
 >- Java 1.8
->- TacoSpigot, PaperSpigot or Spigot (1.7.10, 1.8.X, 1.9.X, 1.10.X, 1.11.X)
+>- TacoSpigot, PaperSpigot or Spigot (1.7.10, 1.8.X, 1.9.X, 1.10.X, 1.11.X, 1.12.X)<br>
+   (In case you use Thermos, Cauldron or similar, you have to update the SpecialSource library to support Java 8 plugins.
+   HowTo: https://github.com/games647/FastLogin/issues/111#issuecomment-272331347)
 >- ProtocolLib (optional, required by some features)
 
 <hr>
@@ -106,6 +108,7 @@ You can also create your own translation file and, if you want, you can share it
 - [List of all permission nodes](http://github.com/AuthMe/AuthMeReloaded/blob/master/docs/permission_nodes.md)
 
 #### How To
+- [How to use the converter](https://github.com/AuthMe/AuthMeReloaded/wiki/Converters)
 - [How to import database from xAuth](https://dev.bukkit.org/projects/authme-reloaded/pages/how-to-import-database-from-xauth)
 - [Website integration](https://github.com/AuthMe/AuthMeReloaded/tree/master/samples/website_integration)
 - [How to convert from Rakamak](https://dev.bukkit.org/projects/authme-reloaded/pages/how-to-import-database-from-rakamak)
